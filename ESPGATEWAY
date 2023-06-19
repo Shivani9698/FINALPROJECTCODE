@@ -1,0 +1,138 @@
+// This is Gateway code with 16x2 LCD connected with gateway Controller via I2C 
+
+#include <WiFiManager.h> // https://github.com/tzapu/WiFiManager
+//#include <WiFi.h>
+#include <FirebaseESP32.h>
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+
+LiquidCrystal_I2C lcd(0x3F, 16, 2);
+
+#define RXp2 16
+#define TXp2 17
+
+#define FIREBASE_HOST "https://esp32-firebase-811f1-default-rtdb.asia-southeast1.firebasedatabase.app/"
+#define FIREBASE_AUTH "AIzaSyBDIo0Ls7V-ALPIkqWNWLVwbwLJor5Je0Q"
+#define WIFI_SSID "madhu"
+#define WIFI_PASSWORD "madhu@234"
+
+
+//Define FirebaseESP32 data object
+FirebaseData firebaseData;
+FirebaseJson json;
+
+void setup() {
+  WiFi.mode(WIFI_STA); // explicitly set mode, esp defaults to STA+AP
+  // it is a good practice to make sure your code sets wifi mode how you want it.
+
+  // put your setup code here, to run once:
+  Serial.begin(115200);
+  Serial2.begin(115200, SERIAL_8N1, RXp2, TXp2);
+  //WiFiManager, Local intialization. Once its business is done, there is no need to keep it around
+  WiFiManager wm;
+
+  lcd.init();
+  lcd.backlight();
+  lcd.clear();
+  lcd.setCursor(4, 0);
+  lcd.print("UCET");
+  lcd.setCursor(0, 1);
+  lcd.print("ESPNOW Network");
+  delay(3000);
+  lcd.clear();
+
+
+  // reset settings - wipe stored credentials for testing
+  // these are stored by the esp library
+  //wm.resetSettings();
+
+  // Automatically connect using saved credentials,
+  // if connection fails, it starts an access point with the specified name ( "AutoConnectAP"),
+  // if empty will auto generate SSID, if password is blank it will be anonymous AP (wm.autoConnect())
+  // then goes into a blocking loop awaiting configuration and will return success result
+
+  bool res;
+  // res = wm.autoConnect(); // auto generated AP name from chipid
+  res = wm.autoConnect("AutoConnectAP"); // anonymous ap
+  //  res = wm.autoConnect("AutoConnectAP","password"); // password protected ap
+
+  if (!res) {
+    Serial.println("Failed to connect");
+    // ESP.restart();
+  }
+  else {
+    //if you get here you have connected to the WiFi
+    Serial.println("connected...yeey :)");
+  }
+
+  WiFi.begin();
+  Serial.print("Connecting to Wi-Fi");
+  while (WiFi.status() != WL_CONNECTED)
+  {
+    Serial.print(".");
+    delay(300);
+    lcd.setCursor(0, 0);
+    lcd.print("Connecting...");
+    delay(3000);
+
+  }
+  Serial.println();
+  Serial.print("Connected with IP: ");
+  Serial.println(WiFi.localIP());
+  Serial.println();
+
+  Firebase.begin(FIREBASE_HOST, FIREBASE_AUTH);
+  Firebase.reconnectWiFi(true);
+
+  //Set database read timeout to 1 minute (max 15 minutes)
+  Firebase.setReadTimeout(firebaseData, 1000 * 60);
+  //tiny, small, medium, large and unlimited.
+  //Size and its write timeout e.g. tiny (1s), small (10s), medium (30s) and large (60s).
+  Firebase.setwriteSizeLimit(firebaseData, "tiny");
+
+  /*
+    This option allows get and delete functions (PUT and DELETE HTTP requests) works for device connected behind the
+    Firewall that allows only GET and POST requests.
+
+    Firebase.enableClassicRequest(firebaseData, true);
+  */
+
+  //String path = "/data";
+
+
+  Serial.println("------------------------------------");
+  Serial.println("Connected...");
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("Connected");
+  delay(3000);
+  lcd.clear();
+}
+
+
+void loop()
+{
+
+  Serial.flush();
+  Serial.println("Message Received: ");
+  Serial.println(Serial2.readString());
+  String Data = Serial2.readString();
+
+
+  json.set("/Data", Data); // Place your sensor data here
+  json.set("/id", Data.substring(18, 22)); // Place your sensor data here
+  json.set("/Temperature", Data.substring(22, 27));
+  json.set("/Humidity",  Data.substring(29, 34));
+
+  Firebase.updateNode(firebaseData, "/Sensor", json);
+
+  lcd.setCursor(4, 0);
+  lcd.print("Node-" + String(Data.substring(20, 21)));
+  lcd.setCursor(0, 1);
+  lcd.print("Temp:" + String(Data.substring(23, 26)));
+  lcd.setCursor(8, 1);
+  lcd.print("Humi:" + String(Data.substring(30, 34)));
+  delay(3000);
+  // lcd.clear();
+  Data = "";
+}
